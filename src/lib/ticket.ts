@@ -198,17 +198,21 @@ export async function renderTicket(canvas: HTMLCanvasElement, data: TicketData) 
   cell('Year Level.', data.year_level ? `${data.year_level}` : '-', colX2, r2Lbl, r2Val)
 }
 
-// แปลง canvas เป็น PNG blob
-export function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png')
-  })
+// แปลง dataURL เป็น Blob แบบ sync (ไม่มี await — กัน iOS หลุด user-gesture ตอนเรียก share)
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [head, b64] = dataUrl.split(',')
+  const mime = (head.match(/:(.*?);/) || [, 'image/png'])[1]
+  const bin = atob(b64)
+  const arr = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+  return new Blob([arr], { type: mime })
 }
 
 // บันทึกตั๋ว PNG — ไล่จากวิธีที่ดีสุดบนแต่ละอุปกรณ์
 // 'shared' = ใช้ share sheet (iOS/Android กด "บันทึกรูปภาพ" ได้), 'downloaded' = โหลดไฟล์ตรง, 'newtab' = เปิดแท็บใหม่
 export async function downloadTicket(canvas: HTMLCanvasElement, filename: string): Promise<'shared' | 'downloaded' | 'newtab'> {
-  const blob = await canvasToBlob(canvas)
+  // สร้างไฟล์แบบ sync ทันที (toDataURL เป็น sync) เพื่อคง user-activation ตอนเรียก navigator.share บน iOS
+  const blob = dataUrlToBlob(canvas.toDataURL('image/png'))
   const file = new File([blob], filename, { type: 'image/png' })
 
   // 1) Web Share API พร้อมไฟล์ — บนมือถือจะได้ share sheet ที่มี "บันทึกรูปภาพ"
