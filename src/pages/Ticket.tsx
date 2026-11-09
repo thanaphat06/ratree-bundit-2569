@@ -22,6 +22,7 @@ export default function Ticket() {
   const [gateError, setGateError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [dlNote, setDlNote] = useState<string | null>(null)
+  const [saveImg, setSaveImg] = useState<string | null>(null)
   const canvasRef = useRef<TicketCanvasHandle>(null)
 
   // โหลดตั๋วจาก session ที่จำไว้
@@ -95,14 +96,13 @@ export default function Ticket() {
   const onDownload = async () => {
     const canvas = canvasRef.current?.getCanvas()
     if (!canvas) return
-    const mode = await downloadTicket(canvas, ticketFilename(ticketData))
-    setDlNote(
-      mode === 'newtab'
-        ? 'เปิดรูปในแท็บใหม่แล้ว — กดค้างที่รูปเพื่อบันทึกลงเครื่อง'
-        : mode === 'shared'
-          ? 'เลือก "บันทึกรูปภาพ" เพื่อเก็บตั๋วลงเครื่องได้เลย'
-          : null,
-    )
+    const r = await downloadTicket(canvas, ticketFilename(ticketData))
+    if (r.mode === 'longpress') {
+      setSaveImg(r.dataUrl || null)
+      setDlNote(null)
+    } else {
+      setDlNote(r.mode === 'shared' ? 'เลือก "บันทึกรูปภาพ" เพื่อเก็บตั๋วลงเครื่องได้เลย' : null)
+    }
   }
 
   const onDelete = async () => {
@@ -159,6 +159,27 @@ export default function Ticket() {
         </div>
       </div>
       <SiteFooter />
+
+      {/* iOS fallback: โชว์รูปให้กดค้างบันทึก */}
+      {saveImg && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center overflow-auto bg-black/85 p-4"
+          onClick={() => setSaveImg(null)}
+        >
+          <p className="mb-3 mt-1 rounded-full bg-white px-4 py-2 text-center text-sm font-medium text-ink">
+            กดค้างที่รูป แล้วเลือก “บันทึกรูปภาพ”
+          </p>
+          <img
+            src={saveImg}
+            alt="ตั๋วของคุณ"
+            className="w-full max-w-sm rounded-xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button className="mt-4 rounded-full bg-white px-8 py-2 font-medium text-ink" onClick={() => setSaveImg(null)}>
+            ปิด
+          </button>
+        </div>
+      )}
     </Shell>
   )
 }

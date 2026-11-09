@@ -208,11 +208,21 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([arr], { type: mime })
 }
 
+export interface DownloadResult {
+  mode: 'shared' | 'downloaded' | 'longpress'
+  dataUrl?: string // มีเมื่อ mode='longpress' → เอาไปโชว์เป็น <img> ให้กดค้างบันทึก
+}
+
+function isIOS(): boolean {
+  return /iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
+
 // บันทึกตั๋ว PNG — ไล่จากวิธีที่ดีสุดบนแต่ละอุปกรณ์
-// 'shared' = ใช้ share sheet (iOS/Android กด "บันทึกรูปภาพ" ได้), 'downloaded' = โหลดไฟล์ตรง, 'newtab' = เปิดแท็บใหม่
-export async function downloadTicket(canvas: HTMLCanvasElement, filename: string): Promise<'shared' | 'downloaded' | 'newtab'> {
+export async function downloadTicket(canvas: HTMLCanvasElement, filename: string): Promise<DownloadResult> {
   // สร้างไฟล์แบบ sync ทันที (toDataURL เป็น sync) เพื่อคง user-activation ตอนเรียก navigator.share บน iOS
-  const blob = dataUrlToBlob(canvas.toDataURL('image/png'))
+  const dataUrl = canvas.toDataURL('image/png')
+  const blob = dataUrlToBlob(dataUrl)
   const file = new File([blob], filename, { type: 'image/png' })
 
   // 1) Web Share API พร้อมไฟล์ — บนมือถือจะได้ share sheet ที่มี "บันทึกรูปภาพ"
@@ -220,23 +230,20 @@ export async function downloadTicket(canvas: HTMLCanvasElement, filename: string
   if (nav.canShare && nav.canShare({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: filename })
-      return 'shared'
+      return { mode: 'shared' }
     } catch (e) {
-      // ผู้ใช้กดยกเลิก share → ถือว่าเสร็จ ไม่ต้องเปิดแท็บใหม่
-      if ((e as Error)?.name === 'AbortError') return 'shared'
+      if ((e as Error)?.name === 'AbortError') return { mode: 'shared' }
       // อื่น ๆ → ตกไปใช้วิธีสำรอง
     }
   }
 
-  // 2) เดสก์ท็อป: ดาวน์โหลดไฟล์ตรง ๆ
-  const url = URL.createObjectURL(blob)
-  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  if (isIOS) {
-    window.open(url, '_blank')
-    setTimeout(() => URL.revokeObjectURL(url), 60000)
-    return 'newtab'
+  // 2) iOS ที่แชร์ไม่ได้ → โชว์รูปให้กดค้างบันทึก (เชื่อถือได้สุดบน Safari)
+  if (isIOS()) {
+    return { mode: 'longpress', dataUrl }
   }
+
+  // 3) เดสก์ท็อป: ดาวน์โหลดไฟล์ตรง ๆ
+  const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
   a.download = filename
@@ -244,7 +251,7 @@ export async function downloadTicket(canvas: HTMLCanvasElement, filename: string
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 10000)
-  return 'downloaded'
+  return { mode: 'downloaded' }
 }
 
 export function ticketFilename(d: TicketData) {
