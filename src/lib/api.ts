@@ -36,6 +36,21 @@ export function deleteMe(studentId: string) {
   return call<{ deleted: boolean }>('deleteMe', { student_id: studentId })
 }
 
+export interface CheckinResult {
+  already: boolean
+  ticket_id: string
+  student_id: string
+  first_name: string
+  last_name: string
+  nickname: string
+  year_level: string
+  food_type: string
+  checked_in_at: string
+}
+export function checkin(studentId: string) {
+  return call<CheckinResult>('checkin', { student_id: studentId })
+}
+
 export function getStats() {
   return call<{ total: number }>('getStats')
 }

@@ -1,19 +1,14 @@
 // วาดตั๋วด้วย Canvas → PNG 1080x1920 (สไตล์บัตรนักเรียน Back to School)
 // องค์ประกอบตกแต่งวาดด้วย vector เองทั้งหมด (ไม่ใช้รูปลิขสิทธิ์ภายนอก)
 import QRCode from 'qrcode'
-import { EVENT } from '../config/event'
 
 export interface TicketData {
   ticket_id: string
-  nickname: string
   first_name: string
   last_name: string
-  major: string
+  nickname: string
   student_id: string
-  bio?: string
-  // data URL รูปโปรไฟล์ (base64) หรือ null
-  profileImage?: string | null
-  showPhoto: boolean
+  year_level: string
 }
 
 const W = 1080
@@ -64,37 +59,56 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath()
 }
 
-// ตัดข้อความไทย/อังกฤษให้พอดีความกว้าง
-function fitText(ctx: CanvasRenderingContext2D, text: string, maxW: number, startPx: number, minPx: number, weightFont: string) {
-  let px = startPx
-  while (px > minPx) {
-    ctx.font = `${weightFont} ${px}px ${THAI}`
-    if (ctx.measureText(text).width <= maxW) break
-    px -= 4
-  }
-  return px
-}
-
 const POSTER_URL = import.meta.env.BASE_URL + 'theme-poster.png'
 
 // วาดตั๋วลงใน canvas ที่ส่งมา (ใช้ทั้ง preview และ export)
 // ส่วนบน = โปสเตอร์ธีมจริง, ส่วนล่าง = การ์ดข้อมูลผู้ลงทะเบียน + QR เช็คอิน
+// แถบ "E-Ticket E-Ticket ..." สีส้ม (บน/ล่างของตั๋ว)
+function drawTicketStrip(ctx: CanvasRenderingContext2D, y: number, h: number) {
+  ctx.fillStyle = C.orange
+  ctx.fillRect(0, y, W, h)
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'
+  ctx.font = `italic 600 24px ${DISPLAY}`
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  const label = 'E-Ticket'
+  const gap = 46
+  let x = 24
+  while (x < W) {
+    ctx.fillText(label, x, y + h / 2 + 1)
+    x += ctx.measureText(label).width + gap
+  }
+  ctx.textBaseline = 'alphabetic'
+}
+
 export async function renderTicket(canvas: HTMLCanvasElement, data: TicketData) {
   await ensureFonts()
   const scale = 2
-  const cx = W / 2
 
-  // โหลดโปสเตอร์เป็นส่วนหัว (ถ้าโหลดไม่ได้ ใช้แถบส้มแทน)
+  // โหลดโปสเตอร์
   let poster: HTMLImageElement | null = null
   try {
     poster = await loadImage(POSTER_URL)
   } catch {
     poster = null
   }
-  const posterH = poster ? Math.round(W * (poster.height / poster.width)) : 720
 
-  const CARD_H = 1140
-  const H = posterH + CARD_H
+  const stripH = 46
+  const side = 44
+  const posterW = W - side * 2
+  const posterRatio = poster ? poster.height / poster.width : 1.414
+  const posterH = Math.round(posterW * posterRatio)
+  const posterY = stripH + 26
+  const posterBottom = posterY + posterH
+
+  const infoTop = posterBottom + 54
+  const r1Lbl = infoTop + 34, r1Val = infoTop + 80
+  const r2Lbl = infoTop + 150, r2Val = infoTop + 196
+  const qrSize = 210
+  const qrBottom = infoTop + qrSize
+  const captionY = qrBottom + 30
+  const blockBottom = Math.max(captionY, r2Val)
+  const H = blockBottom + 36 + stripH
 
   canvas.width = W * scale
   canvas.height = H * scale
@@ -102,149 +116,83 @@ export async function renderTicket(canvas: HTMLCanvasElement, data: TicketData) 
   ctx.scale(scale, scale)
   ctx.textBaseline = 'alphabetic'
 
-  // ---- พื้นการ์ดครีม + เส้นตารางสมุด (ทั้งใบ) ----
-  ctx.fillStyle = C.cream
+  // พื้นขาว + กรอบนอก
+  ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, W, H)
-  ctx.strokeStyle = 'rgba(138,110,82,0.10)'
-  ctx.lineWidth = 1
-  for (let gy = posterH; gy <= H; gy += 46) {
-    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke()
-  }
-  for (let gx = 0; gx <= W; gx += 46) {
-    ctx.beginPath(); ctx.moveTo(gx, posterH); ctx.lineTo(gx, H); ctx.stroke()
-  }
+  ctx.strokeStyle = 'rgba(138,110,82,0.25)'
+  ctx.lineWidth = 2
+  roundRect(ctx, 4, 4, W - 8, H - 8, 28)
+  ctx.stroke()
 
-  // ---- ส่วนหัว: โปสเตอร์ ----
+  // แถบ E-Ticket บน/ล่าง
+  drawTicketStrip(ctx, 0, stripH)
+  drawTicketStrip(ctx, H - stripH, stripH)
+
+  // โปสเตอร์ในกรอบมุมมน
+  ctx.save()
+  roundRect(ctx, side, posterY, posterW, posterH, 18)
+  ctx.clip()
   if (poster) {
-    ctx.drawImage(poster, 0, 0, W, posterH)
+    ctx.drawImage(poster, side, posterY, posterW, posterH)
   } else {
     ctx.fillStyle = C.orange
-    ctx.fillRect(0, 0, W, posterH)
+    ctx.fillRect(side, posterY, posterW, posterH)
     ctx.fillStyle = '#fff'
     ctx.textAlign = 'center'
-    ctx.font = `700 120px ${DISPLAY}`
-    ctx.fillText('BACK TO SCHOOL', cx, posterH / 2)
-  }
-
-  // ---- รอยปรุ (perforation) ที่รอยต่อ ----
-  const perfY = posterH
-  ctx.fillStyle = C.cream
-  ctx.beginPath(); ctx.arc(0, perfY, 30, 0, Math.PI * 2); ctx.fill()
-  ctx.beginPath(); ctx.arc(W, perfY, 30, 0, Math.PI * 2); ctx.fill()
-  ctx.strokeStyle = 'rgba(138,110,82,0.45)'
-  ctx.lineWidth = 3
-  ctx.setLineDash([16, 16])
-  ctx.beginPath(); ctx.moveTo(40, perfY); ctx.lineTo(W - 40, perfY); ctx.stroke()
-  ctx.setLineDash([])
-
-  // ---- รูปโปรไฟล์วงกลม ----
-  const cy = posterH + 180
-  const rad = 140
-  ctx.save()
-  const ring = ctx.createLinearGradient(cx - rad, cy - rad, cx + rad, cy + rad)
-  ring.addColorStop(0, C.gold)
-  ring.addColorStop(1, C.orange)
-  ctx.fillStyle = ring
-  ctx.beginPath(); ctx.arc(cx, cy, rad + 12, 0, Math.PI * 2); ctx.fill()
-
-  const hasPhoto = data.showPhoto && !!data.profileImage
-  if (hasPhoto) {
-    try {
-      const img = await loadImage(data.profileImage!)
-      ctx.save()
-      ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.clip()
-      const ar = img.width / img.height
-      let dw = rad * 2, dh = rad * 2
-      if (ar > 1) dw = dh * ar
-      else dh = dw / ar
-      ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh)
-      ctx.restore()
-    } catch {
-      drawInitial(ctx, cx, cy, rad, data.nickname)
-    }
-  } else {
-    drawInitial(ctx, cx, cy, rad, data.nickname)
+    ctx.font = `700 110px ${DISPLAY}`
+    ctx.fillText('BACK TO SCHOOL', W / 2, posterY + posterH / 2)
   }
   ctx.restore()
+  ctx.strokeStyle = 'rgba(138,110,82,0.2)'
+  ctx.lineWidth = 2
+  roundRect(ctx, side, posterY, posterW, posterH, 18)
+  ctx.stroke()
 
-  // ---- ชื่อเล่น + ชื่อ + สาขา/รหัส ----
-  ctx.textAlign = 'center'
-  ctx.fillStyle = C.ink
-  const nickPx = fitText(ctx, data.nickname, W - 200, 92, 48, '700')
-  ctx.font = `700 ${nickPx}px ${THAI}`
-  ctx.fillText(data.nickname, cx, posterH + 400)
-
-  ctx.fillStyle = 'rgba(31,26,23,0.85)'
-  const fullName = `${data.first_name} ${data.last_name}`
-  const namePx = fitText(ctx, fullName, W - 220, 46, 30, '500')
-  ctx.font = `500 ${namePx}px ${THAI}`
-  ctx.fillText(fullName, cx, posterH + 458)
-
-  ctx.fillStyle = C.orangeDeep
-  ctx.font = `500 34px ${THAI}`
-  ctx.fillText(`${data.major} · ${data.student_id}`, cx, posterH + 512)
-
-  if (data.bio && data.bio.trim()) {
-    ctx.fillStyle = 'rgba(31,26,23,0.6)'
-    const bioPx = fitText(ctx, `“${data.bio}”`, W - 240, 34, 24, 'italic 400')
-    ctx.font = `italic 400 ${bioPx}px ${THAI}`
-    ctx.fillText(`“${data.bio}”`, cx, posterH + 560)
-  }
-
-  // ---- QR เช็คอิน ----
-  const qrSize = 280
-  const qrY = posterH + 644
-  ctx.fillStyle = 'rgba(31,26,23,0.5)'
-  ctx.font = `500 28px ${THAI}`
-  ctx.fillText('สแกนเพื่อเช็คอินหน้างาน', cx, qrY - 18)
+  // ---- QR เช็คอิน (ซ้ายล่าง) ----
   try {
-    const qrUrl = await QRCode.toDataURL(data.ticket_id, {
-      margin: 1,
+    // QR = รหัสนักศึกษา (ผู้จัดงานสแกนเช็คอินเทียบกับ Sheet)
+    const qrUrl = await QRCode.toDataURL(data.student_id, {
+      margin: 0,
       width: qrSize * scale,
       color: { dark: '#1F1A17', light: '#FFFFFF' },
     })
     const qrImg = await loadImage(qrUrl)
-    ctx.fillStyle = '#ffffff'
-    roundRect(ctx, cx - qrSize / 2 - 16, qrY - 16, qrSize + 32, qrSize + 32, 20)
-    ctx.fill()
-    ctx.strokeStyle = 'rgba(138,110,82,0.3)'
-    ctx.lineWidth = 2
-    roundRect(ctx, cx - qrSize / 2 - 16, qrY - 16, qrSize + 32, qrSize + 32, 20)
-    ctx.stroke()
-    ctx.drawImage(qrImg, cx - qrSize / 2, qrY, qrSize, qrSize)
+    ctx.drawImage(qrImg, side, infoTop, qrSize, qrSize)
   } catch {
     /* QR fail — ข้าม */
   }
+  ctx.fillStyle = 'rgba(31,26,23,0.45)'
+  ctx.font = `400 24px ${THAI}`
+  ctx.textAlign = 'left'
+  ctx.fillText('ข้อมูลเพิ่มเติม', side, captionY)
 
-  ctx.fillStyle = C.ink
-  ctx.font = `700 44px ${DISPLAY}`
-  ctx.fillText(data.ticket_id, cx, qrY + qrSize + 58)
+  // ---- ตาราง Name / Nickname / Student ID / Year Level ----
+  const colX1 = side + qrSize + 60
+  const colX2 = colX1 + 360
+  const cellMax = 340
 
-  // ---- Footer: FB / IG ----
-  ctx.fillStyle = 'rgba(31,26,23,0.6)'
-  ctx.font = `400 26px ${THAI}`
-  ctx.fillText(`FB: ${EVENT.facebook.label}  ·  IG: ${EVENT.instagram.label}`, cx, H - 48)
+  function cell(label: string, value: string, x: number, lblY: number, valY: number) {
+    ctx.textAlign = 'left'
+    ctx.fillStyle = C.orange
+    ctx.font = `600 27px ${DISPLAY}`
+    ctx.fillText(label, x, lblY)
+    ctx.fillStyle = C.ink
+    ctx.textBaseline = 'alphabetic'
+    let px = 40
+    while (px > 24) {
+      ctx.font = `600 ${px}px ${THAI}`
+      if (ctx.measureText(value).width <= cellMax) break
+      px -= 2
+    }
+    ctx.font = `600 ${px}px ${THAI}`
+    ctx.fillText(value || '-', x, valY)
+  }
 
-  // ---- กรอบนอกตั๋ว ----
-  ctx.strokeStyle = 'rgba(138,110,82,0.35)'
-  ctx.lineWidth = 3
-  roundRect(ctx, 6, 6, W - 12, H - 12, 36)
-  ctx.stroke()
-}
-
-function drawInitial(ctx: CanvasRenderingContext2D, cx: number, cy: number, rad: number, nickname: string) {
-  ctx.save()
-  ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.clip()
-  ctx.fillStyle = C.orange
-  ctx.fillRect(cx - rad, cy - rad, rad * 2, rad * 2)
-  ctx.fillStyle = '#ffffff'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  const initial = (nickname || '?').trim().charAt(0).toUpperCase()
-  ctx.font = `700 150px ${DISPLAY}`
-  ctx.fillText(initial, cx, cy + 8)
-  ctx.restore()
-  ctx.textBaseline = 'alphabetic'
+  const fullName = `${data.first_name} ${data.last_name}`.trim()
+  cell('Name.', fullName, colX1, r1Lbl, r1Val)
+  cell('Nickname.', data.nickname, colX2, r1Lbl, r1Val)
+  cell('Student ID.', data.student_id, colX1, r2Lbl, r2Val)
+  cell('Year Level.', data.year_level ? `${data.year_level}` : '-', colX2, r2Lbl, r2Val)
 }
 
 // แปลง canvas เป็น PNG blob

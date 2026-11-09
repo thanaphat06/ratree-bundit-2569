@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { EVENT, DEFAULT_FACULTY, DEFAULT_MAJOR, FOOD_TYPES, MAJORS } from '../config/event'
+import { EVENT, DEFAULT_FACULTY, DEFAULT_MAJOR, FOOD_TYPES, MAJORS, YEAR_LEVELS } from '../config/event'
 import { deleteMe, getMe, updateProfile } from '../lib/api'
 import { clearSid, getSid, setSid } from '../lib/session'
 import { useForm } from 'react-hook-form'
@@ -21,7 +21,6 @@ export default function Ticket() {
   const [gateLoading, setGateLoading] = useState(false)
   const [gateError, setGateError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
-  const [showPhoto, setShowPhoto] = useState(true)
   const [dlNote, setDlNote] = useState<string | null>(null)
   const canvasRef = useRef<TicketCanvasHandle>(null)
 
@@ -33,7 +32,6 @@ export default function Ticket() {
       setLoading(false)
       if (r.ok && r.data) {
         setRec(r.data)
-        setShowPhoto(r.data.show_photo_on_ticket)
       } else if (r.ok && !r.data) {
         // รหัสนี้ยังไม่ลงทะเบียน
         clearSid()
@@ -53,7 +51,6 @@ export default function Ticket() {
       if (!r.data) return setGateError('ไม่พบการลงทะเบียนของรหัสนี้ กรุณาลงทะเบียนก่อน')
       setSid(id)
       setRec(r.data)
-      setShowPhoto(r.data.show_photo_on_ticket)
       setSidState(id)
     }
     return (
@@ -87,14 +84,11 @@ export default function Ticket() {
 
   const ticketData: TicketData = {
     ticket_id: rec.ticket_id,
-    nickname: rec.nickname,
     first_name: rec.first_name,
     last_name: rec.last_name,
-    major: rec.major,
+    nickname: rec.nickname,
     student_id: rec.student_id,
-    bio: rec.bio,
-    profileImage: rec.profile_image_base64 || null,
-    showPhoto,
+    year_level: rec.year_level,
   }
 
   const onDownload = async () => {
@@ -102,12 +96,6 @@ export default function Ticket() {
     if (!canvas) return
     const mode = await downloadTicket(canvas, ticketFilename(ticketData))
     setDlNote(mode === 'newtab' ? 'เปิดรูปในแท็บใหม่แล้ว — กดค้างที่รูปเพื่อบันทึกลงเครื่อง' : null)
-  }
-
-  const onToggle = async () => {
-    const nextVal = !showPhoto
-    setShowPhoto(nextVal)
-    await updateProfile(rec.student_id, { show_photo_on_ticket: nextVal })
   }
 
   const onDelete = async () => {
@@ -129,7 +117,6 @@ export default function Ticket() {
         onCancel={() => setEditing(false)}
         onSaved={(updated) => {
           setRec(updated)
-          setShowPhoto(updated.show_photo_on_ticket)
           setEditing(false)
         }}
       />
@@ -149,11 +136,6 @@ export default function Ticket() {
             ดาวน์โหลดตั๋ว (PNG)
           </button>
           {dlNote && <p className="rounded-xl bg-gold/15 px-4 py-3 text-sm text-ink/70">{dlNote}</p>}
-
-          <label className="flex items-center justify-between rounded-xl bg-white/75 px-4 py-3 shadow-sm">
-            <span className="text-sm text-ink/80">แสดงรูปโปรไฟล์บนตั๋ว</span>
-            <input type="checkbox" className="h-5 w-5 accent-orange" checked={showPhoto} onChange={onToggle} />
-          </label>
 
           <div className="flex gap-3">
             <button className="btn-ghost flex-1" onClick={() => setEditing(true)}>แก้ไขโปรไฟล์</button>
@@ -200,6 +182,7 @@ function EditProfile({
       last_name: rec.last_name,
       nickname: rec.nickname,
       student_id: rec.student_id,
+      year_level: rec.year_level || '',
       major: MAJORS.includes(rec.major as any) ? rec.major : DEFAULT_MAJOR,
       faculty: rec.faculty || DEFAULT_FACULTY,
       phone: rec.phone,
@@ -242,6 +225,12 @@ function EditProfile({
           <F label="นามสกุล" e={errors.last_name?.message}><input className="field" {...field('last_name')} /></F>
           <F label="ชื่อเล่น" e={errors.nickname?.message}><input className="field" {...field('nickname')} /></F>
           <F label="รหัสนักศึกษา" e={errors.student_id?.message}><input className="field bg-cream/60" readOnly {...field('student_id')} /></F>
+          <F label="ชั้นปี" e={errors.year_level?.message}>
+            <select className="field" {...field('year_level')}>
+              <option value="" disabled>เลือกชั้นปี</option>
+              {YEAR_LEVELS.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+            </select>
+          </F>
           <F label="สาขา" e={errors.major?.message}>
             <input className="field bg-cream/60" readOnly {...field('major')} />
           </F>
@@ -263,11 +252,6 @@ function EditProfile({
             </F>
           </div>
         </div>
-
-        <label className="mt-4 flex items-center gap-3 rounded-xl bg-cream px-4 py-3">
-          <input type="checkbox" className="h-5 w-5 accent-orange" {...field('show_photo_on_ticket')} />
-          <span className="text-sm text-ink/80">แสดงรูปโปรไฟล์บนตั๋ว</span>
-        </label>
 
         {apiError && <p className="mt-4 rounded-xl bg-orange/10 px-4 py-3 text-sm text-orangeDeep">{apiError}</p>}
 

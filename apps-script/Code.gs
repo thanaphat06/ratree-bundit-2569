@@ -18,7 +18,7 @@ var TICKET_PREFIX = 'BIO69';
 
 var HEADERS = [
   'ticket_id', 'created_at', 'updated_at', 'student_id',
-  'first_name', 'last_name', 'nickname', 'major', 'faculty',
+  'first_name', 'last_name', 'nickname', 'year_level', 'major', 'faculty',
   'phone', 'line_id', 'instagram', 'food_type', 'food_allergy', 'bio',
   'profile_image_url', 'show_photo_on_ticket', 'status', 'checked_in_at',
 ];
@@ -33,6 +33,7 @@ function doPost(e) {
       case 'register': out = handleRegister(body); break;
       case 'updateProfile': out = handleUpdateProfile(body); break;
       case 'deleteMe': out = handleDelete(body); break;
+      case 'checkin': out = handleCheckin(body); break;
       case 'getStats': out = handleGetStats(); break;
       default: out = err('BAD_ACTION', 'ไม่รู้จักคำสั่งนี้');
     }
@@ -88,6 +89,7 @@ function handleRegister(body) {
       first_name: body.first_name,
       last_name: body.last_name,
       nickname: body.nickname,
+      year_level: body.year_level,
       major: body.major,
       faculty: body.faculty,
       phone: body.phone,
@@ -116,7 +118,7 @@ function handleUpdateProfile(body) {
 
   var rec = rowToRecord(found.values, false);
   // แก้ได้เฉพาะฟิลด์เหล่านี้ (ticket_id / student_id / created ไม่เปลี่ยน)
-  var editable = ['first_name', 'last_name', 'nickname', 'major', 'faculty',
+  var editable = ['first_name', 'last_name', 'nickname', 'year_level', 'major', 'faculty',
     'phone', 'line_id', 'instagram', 'food_type', 'food_allergy', 'bio',
     'show_photo_on_ticket'];
   editable.forEach(function (f) {
@@ -143,6 +145,39 @@ function handleDelete(body) {
     deletePhoto(rec.ticket_id);
     getSheet().deleteRow(found.rowIndex);
     return ok({ deleted: true });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// เช็คอินด้วยรหัสนักศึกษา (ผู้จัดงานสแกน QR) — เทียบกับ Sheet
+function handleCheckin(body) {
+  var sid = normId(body.student_id);
+  if (!sid) return err('NO_ID', 'ไม่พบรหัสนักศึกษาจาก QR');
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var found = findRowById(sid);
+    if (!found) return err('NOT_FOUND', 'ไม่พบรหัสนี้ในระบบ (ยังไม่ได้ลงทะเบียน)');
+    var rec = rowToRecord(found.values, false);
+    var already = String(rec.status) === 'checked_in';
+    if (!already) {
+      rec.status = 'checked_in';
+      rec.checked_in_at = nowTh();
+      getSheet().getRange(found.rowIndex, 1, 1, HEADERS.length)
+        .setValues([HEADERS.map(function (h) { return sanitize(rec[h]); })]);
+    }
+    return ok({
+      already: already,
+      ticket_id: rec.ticket_id,
+      student_id: rec.student_id,
+      first_name: rec.first_name,
+      last_name: rec.last_name,
+      nickname: rec.nickname,
+      year_level: rec.year_level,
+      food_type: rec.food_type,
+      checked_in_at: rec.checked_in_at,
+    });
   } finally {
     lock.releaseLock();
   }

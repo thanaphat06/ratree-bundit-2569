@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { EVENT } from '../config/event'
 
 export default function SiteFooter() {
@@ -13,6 +14,9 @@ export default function SiteFooter() {
           IG: {EVENT.instagram.label}
         </a>
       </div>
+      <Link to="/admin" className="mt-4 inline-block text-xs text-ink/40 hover:text-orange hover:underline">
+        สำหรับผู้จัด
+      </Link>
     </footer>
   )
 }

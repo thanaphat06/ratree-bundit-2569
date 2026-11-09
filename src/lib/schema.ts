@@ -11,6 +11,7 @@ export const registerSchema = z.object({
     .trim()
     .min(1, 'กรอกรหัสนักศึกษา')
     .regex(/^[0-9][0-9-]{6,14}$/, 'รูปแบบรหัสนักศึกษาไม่ถูกต้อง'),
+  year_level: z.string().trim().min(1, 'เลือกชั้นปี'),
   major: z.string().trim().min(1, 'เลือกสาขา'),
   faculty: z.string().trim().min(1, 'กรอกคณะ'),
   phone: z.string().trim().regex(/^0\d{9}$/, 'เบอร์โทร 10 หลัก ขึ้นต้น 0'),

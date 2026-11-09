@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '../lib/zodResolver'
 import { registerSchema, type RegisterForm } from '../lib/schema'
-import { DEFAULT_FACULTY, DEFAULT_MAJOR, EVENT, FOOD_TYPES, isRegistrationClosed } from '../config/event'
+import { DEFAULT_FACULTY, DEFAULT_MAJOR, EVENT, FOOD_TYPES, YEAR_LEVELS, isRegistrationClosed } from '../config/event'
 import { getMe, register } from '../lib/api'
 import { setSid } from '../lib/session'
 import PhotoUploader from '../components/PhotoUploader'
@@ -88,6 +88,7 @@ function RegisterWizard({ studentId, onDone }: { studentId: string; onDone: () =
       last_name: '',
       nickname: '',
       student_id: studentId,
+      year_level: '',
       major: DEFAULT_MAJOR,
       faculty: DEFAULT_FACULTY,
       phone: '',
@@ -107,19 +108,16 @@ function RegisterWizard({ studentId, onDone }: { studentId: string; onDone: () =
       nickname: v.nickname || 'ชื่อเล่น',
       first_name: v.first_name || 'ชื่อ',
       last_name: v.last_name || 'นามสกุล',
-      major: v.major || DEFAULT_MAJOR,
       student_id: v.student_id || studentId,
-      bio: v.bio,
-      profileImage: image,
-      showPhoto: v.show_photo_on_ticket,
+      year_level: v.year_level || '-',
     }),
-    [v.nickname, v.first_name, v.last_name, v.major, v.student_id, v.bio, v.show_photo_on_ticket, image, studentId],
+    [v.nickname, v.first_name, v.last_name, v.student_id, v.year_level, studentId],
   )
 
   const fieldsByStep: (keyof RegisterForm)[][] = [
-    ['first_name', 'last_name', 'nickname', 'student_id', 'major', 'faculty'],
+    ['first_name', 'last_name', 'nickname', 'student_id', 'year_level', 'major', 'faculty'],
     ['phone', 'line_id', 'instagram', 'food_type', 'food_allergy'],
-    ['bio', 'show_photo_on_ticket'],
+    ['bio'],
   ]
 
   const next = async () => {
@@ -172,6 +170,12 @@ function RegisterWizard({ studentId, onDone }: { studentId: string; onDone: () =
                 <Field label="รหัสนักศึกษา" error={errors.student_id?.message}>
                   <input className="field bg-cream/60" readOnly {...field('student_id')} />
                 </Field>
+                <Field label="ชั้นปี" error={errors.year_level?.message}>
+                  <select className="field" {...field('year_level')} defaultValue="">
+                    <option value="" disabled>เลือกชั้นปี</option>
+                    {YEAR_LEVELS.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+                  </select>
+                </Field>
                 <Field label="สาขา" error={errors.major?.message}>
                   <input className="field bg-cream/60" readOnly {...field('major')} />
                 </Field>
@@ -208,13 +212,10 @@ function RegisterWizard({ studentId, onDone }: { studentId: string; onDone: () =
             {step === 2 && (
               <div className="space-y-5">
                 <PhotoUploader value={image} onChange={setImage} />
+                <p className="text-center text-xs text-ink/50">รูปโปรไฟล์ใช้ในระบบของทีมงาน ไม่แสดงบนตั๋ว</p>
                 <Field label="ข้อความสั้น ๆ ถึงเพื่อน (ไม่บังคับ, ≤ 120)" error={errors.bio?.message}>
                   <textarea className="field" rows={2} maxLength={120} {...field('bio')} />
                 </Field>
-                <label className="flex items-center gap-3 rounded-xl bg-cream px-4 py-3">
-                  <input type="checkbox" className="h-5 w-5 accent-orange" {...field('show_photo_on_ticket')} />
-                  <span className="text-sm text-ink/80">แสดงรูปโปรไฟล์บนตั๋ว</span>
-                </label>
               </div>
             )}
 

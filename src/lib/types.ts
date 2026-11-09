@@ -6,6 +6,7 @@ export interface ProfileInput {
   last_name: string
   nickname: string
   student_id: string
+  year_level: string
   major: string
   faculty: string
   phone: string
