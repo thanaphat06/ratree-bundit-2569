@@ -5,7 +5,10 @@ export interface ProfileInput {
   first_name: string
   last_name: string
   nickname: string
+  // key ระบุตัวตน: รหัสนักศึกษา (ตัวเลข) หรือ ชื่อ-นามสกุล (สำหรับอาจารย์/ศิษย์เก่า)
   student_id: string
+  // passcode 4 หลัก — เฉพาะคนลงด้วยชื่อ (คนมีรหัส นศ. เว้นว่าง)
+  passcode?: string
   year_level: string
   major: string
   faculty: string

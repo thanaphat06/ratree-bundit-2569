@@ -5,7 +5,7 @@ import { zodResolver } from '../lib/zodResolver'
 import { registerSchema, type RegisterForm } from '../lib/schema'
 import { DEFAULT_FACULTY, DEFAULT_MAJOR, EVENT, FOOD_TYPES, YEAR_LEVELS, isRegistrationClosed } from '../config/event'
 import { getMe, register } from '../lib/api'
-import { setSid } from '../lib/session'
+import { setSession, isStudentId } from '../lib/session'
 import PhotoUploader from '../components/PhotoUploader'
 import TicketCanvas from '../components/TicketCanvas'
 import IdentityGate from '../components/IdentityGate'
@@ -13,9 +13,11 @@ import type { TicketData } from '../lib/ticket'
 
 const STEPS = ['ข้อมูลส่วนตัว', 'ติดต่อ & อาหาร', 'โปรไฟล์ & ตั๋ว']
 
+interface Identity { id: string; passcode?: string; isStudent: boolean }
+
 export default function Register() {
   const nav = useNavigate()
-  const [studentId, setStudentId] = useState<string | null>(null)
+  const [identity, setIdentity] = useState<Identity | null>(null)
   const [gateLoading, setGateLoading] = useState(false)
   const [gateError, setGateError] = useState<string | null>(null)
 
@@ -30,12 +32,12 @@ export default function Register() {
     )
   }
 
-  // ยังไม่ระบุรหัส → ด่านรหัสนักศึกษา + ขอความยินยอม
-  if (!studentId) {
-    const onGate = async (id: string) => {
+  // ยังไม่ระบุตัวตน → ด่านรหัสนักศึกษา/ชื่อ + ขอความยินยอม
+  if (!identity) {
+    const onGate = async (id: string, passcode?: string) => {
       setGateError(null)
       setGateLoading(true)
-      const r = await getMe(id)
+      const r = await getMe(id, passcode)
       setGateLoading(false)
       if (!r.ok) {
         setGateError(r.message)
@@ -43,20 +45,21 @@ export default function Register() {
       }
       if (r.data) {
         // ลงทะเบียนไว้แล้ว → ไปดูตั๋ว
-        setSid(id)
+        setSession({ id, passcode })
         nav('/ticket')
         return
       }
-      setSid(id)
-      setStudentId(id)
+      setSession({ id, passcode })
+      setIdentity({ id, passcode, isStudent: isStudentId(id) })
     }
     return (
       <Shell>
         <IdentityGate
           title="ลงทะเบียนรับตั๋ว"
-          subtitle="กรอกรหัสนักศึกษาเพื่อเริ่มลงทะเบียน (ใช้รหัสนี้กลับมาดู/แก้ตั๋วได้ภายหลัง)"
+          subtitle="กรอกรหัสนักศึกษา (หรือชื่อ-นามสกุลสำหรับอาจารย์/ศิษย์เก่า) เพื่อเริ่มลงทะเบียน"
           submitLabel="ถัดไป"
           requireConsent
+          passcodeMode="set"
           loading={gateLoading}
           error={gateError}
           onSubmit={onGate}
@@ -65,10 +68,11 @@ export default function Register() {
     )
   }
 
-  return <RegisterWizard studentId={studentId} onDone={() => nav('/ticket')} />
+  return <RegisterWizard identity={identity} onDone={() => nav('/ticket')} />
 }
 
-function RegisterWizard({ studentId, onDone }: { studentId: string; onDone: () => void }) {
+function RegisterWizard({ identity, onDone }: { identity: Identity; onDone: () => void }) {
+  const studentId = identity.id
   const [step, setStep] = useState(0)
   const [image, setImage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -127,7 +131,7 @@ function RegisterWizard({ studentId, onDone }: { studentId: string; onDone: () =
   const onSubmit = async (data: RegisterForm) => {
     setApiError(null)
     setSubmitting(true)
-    const r = await register({ ...data, student_id: studentId, imageBase64: image })
+    const r = await register({ ...data, student_id: studentId, passcode: identity.passcode, imageBase64: image })
     setSubmitting(false)
     if (r.ok) onDone()
     else setApiError(r.message || 'เกิดข้อผิดพลาด ลองใหม่อีกครั้ง')
@@ -135,7 +139,7 @@ function RegisterWizard({ studentId, onDone }: { studentId: string; onDone: () =
 
   return (
     <Shell>
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-4xl">
         <ol className="mb-6 flex items-center justify-center gap-2">
           {STEPS.map((s, i) => (
             <li key={s} className="flex items-center gap-2">
@@ -154,7 +158,7 @@ function RegisterWizard({ studentId, onDone }: { studentId: string; onDone: () =
           ))}
         </ol>
 
-        <div className="grid gap-8 lg:grid-cols-[1fr_auto]">
+        <div className="grid gap-8 lg:grid-cols-[1fr_320px] lg:items-start">
           <form onSubmit={handleSubmit(onSubmit)} className="rounded-2xl bg-white/80 p-6 shadow-sm sm:p-8">
             {step === 0 && (
               <div className="grid gap-4 sm:grid-cols-2">
@@ -167,16 +171,18 @@ function RegisterWizard({ studentId, onDone }: { studentId: string; onDone: () =
                 <Field label="ชื่อเล่น (แสดงตัวใหญ่บนตั๋ว)" error={errors.nickname?.message}>
                   <input className="field" {...field('nickname')} />
                 </Field>
-                <Field label="รหัสนักศึกษา" error={errors.student_id?.message}>
-                  <input className="field bg-cream/60" readOnly {...field('student_id')} />
-                </Field>
-                <Field label="ชั้นปี" error={errors.year_level?.message}>
+                {identity.isStudent && (
+                  <Field label="รหัสนักศึกษา" error={errors.student_id?.message}>
+                    <input className="field bg-cream/60" readOnly {...field('student_id')} />
+                  </Field>
+                )}
+                <Field label="ชั้นปี / สถานะ" error={errors.year_level?.message}>
                   <select className="field" {...field('year_level')} defaultValue="">
                     <option value="" disabled>เลือกชั้นปี</option>
-                    {YEAR_LEVELS.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+                    {YEAR_LEVELS.map((y) => <option key={y} value={y}>{y}</option>)}
                   </select>
                 </Field>
-                <Field label="สาขา" error={errors.major?.message}>
+                <Field label="สาขาวิชา" error={errors.major?.message}>
                   <input className="field bg-cream/60" readOnly {...field('major')} />
                 </Field>
                 <Field label="คณะ" error={errors.faculty?.message}>

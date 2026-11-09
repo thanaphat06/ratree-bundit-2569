@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { EVENT, DEFAULT_FACULTY, DEFAULT_MAJOR, FOOD_TYPES, MAJORS, YEAR_LEVELS } from '../config/event'
 import { deleteMe, getMe, updateProfile } from '../lib/api'
-import { clearSid, getSid, setSid } from '../lib/session'
+import { clearSession, getSession, setSession, isStudentId, type Session } from '../lib/session'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '../lib/zodResolver'
 import { registerSchema, type RegisterForm } from '../lib/schema'
@@ -15,51 +15,52 @@ import type { Registration } from '../lib/types'
 
 export default function Ticket() {
   const nav = useNavigate()
-  const [sid, setSidState] = useState<string | null>(getSid())
+  const [session, setSessionState] = useState<Session | null>(getSession())
   const [rec, setRec] = useState<Registration | null>(null)
-  const [loading, setLoading] = useState(!!getSid())
+  const [loading, setLoading] = useState(!!getSession())
   const [gateLoading, setGateLoading] = useState(false)
   const [gateError, setGateError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [dlNote, setDlNote] = useState<string | null>(null)
   const canvasRef = useRef<TicketCanvasHandle>(null)
 
-  // โหลดตั๋วจากรหัสที่จำไว้
+  // โหลดตั๋วจาก session ที่จำไว้
   useEffect(() => {
-    if (!sid) return
+    if (!session) return
     setLoading(true)
-    getMe(sid).then((r) => {
+    getMe(session.id, session.passcode).then((r) => {
       setLoading(false)
       if (r.ok && r.data) {
         setRec(r.data)
       } else if (r.ok && !r.data) {
-        // รหัสนี้ยังไม่ลงทะเบียน
-        clearSid()
-        setSidState(null)
+        clearSession()
+        setSessionState(null)
       }
+      // ถ้า passcode ผิด (ไม่ ok) ปล่อยให้ค้าง แล้วผู้ใช้กดออกเพื่อกรอกใหม่
     })
-  }, [sid])
+  }, [session])
 
-  // ด่านรหัสนักศึกษา (ยังไม่มี session)
-  if (!sid) {
-    const onGate = async (id: string) => {
+  // ด่านรหัสนักศึกษา/ชื่อ (ยังไม่มี session)
+  if (!session) {
+    const onGate = async (id: string, passcode?: string) => {
       setGateError(null)
       setGateLoading(true)
-      const r = await getMe(id)
+      const r = await getMe(id, passcode)
       setGateLoading(false)
       if (!r.ok) return setGateError(r.message)
-      if (!r.data) return setGateError('ไม่พบการลงทะเบียนของรหัสนี้ กรุณาลงทะเบียนก่อน')
-      setSid(id)
+      if (!r.data) return setGateError('ไม่พบการลงทะเบียนของรหัส/ชื่อนี้ กรุณาลงทะเบียนก่อน')
+      setSession({ id, passcode })
       setRec(r.data)
-      setSidState(id)
+      setSessionState({ id, passcode })
     }
     return (
       <Shell>
         <IdentityGate
           title="ดูตั๋วของฉัน"
-          subtitle="กรอกรหัสนักศึกษาที่ใช้ลงทะเบียนไว้"
+          subtitle="กรอกรหัสนักศึกษา หรือ ชื่อ-นามสกุล ที่ใช้ลงทะเบียนไว้"
           submitLabel="ดูตั๋ว"
           requireConsent={false}
+          passcodeMode="enter"
           loading={gateLoading}
           error={gateError}
           onSubmit={onGate}
@@ -77,8 +78,8 @@ export default function Ticket() {
   if (!rec) return <Shell><Card><p className="text-ink/60">กำลังโหลด…</p></Card></Shell>
 
   const signOut = () => {
-    clearSid()
-    setSidState(null)
+    clearSession()
+    setSessionState(null)
     setRec(null)
   }
 
@@ -95,14 +96,20 @@ export default function Ticket() {
     const canvas = canvasRef.current?.getCanvas()
     if (!canvas) return
     const mode = await downloadTicket(canvas, ticketFilename(ticketData))
-    setDlNote(mode === 'newtab' ? 'เปิดรูปในแท็บใหม่แล้ว — กดค้างที่รูปเพื่อบันทึกลงเครื่อง' : null)
+    setDlNote(
+      mode === 'newtab'
+        ? 'เปิดรูปในแท็บใหม่แล้ว — กดค้างที่รูปเพื่อบันทึกลงเครื่อง'
+        : mode === 'shared'
+          ? 'เลือก "บันทึกรูปภาพ" เพื่อเก็บตั๋วลงเครื่องได้เลย'
+          : null,
+    )
   }
 
   const onDelete = async () => {
     if (!window.confirm('ยืนยันลบข้อมูลการลงทะเบียนและตั๋วของคุณ?\nการลบนี้ย้อนกลับไม่ได้ (ลงทะเบียนใหม่ได้ภายหลัง)')) return
-    const r = await deleteMe(rec.student_id)
+    const r = await deleteMe(rec.student_id, session.passcode)
     if (r.ok) {
-      clearSid()
+      clearSession()
       alert('ลบข้อมูลเรียบร้อยแล้ว')
       nav('/')
     } else {
@@ -114,6 +121,7 @@ export default function Ticket() {
     return (
       <EditProfile
         rec={rec}
+        passcode={session.passcode}
         onCancel={() => setEditing(false)}
         onSaved={(updated) => {
           setRec(updated)
@@ -158,13 +166,16 @@ export default function Ticket() {
 // ---------- แก้ไขโปรไฟล์ ----------
 function EditProfile({
   rec,
+  passcode,
   onCancel,
   onSaved,
 }: {
   rec: Registration
+  passcode?: string
   onCancel: () => void
   onSaved: (r: Registration) => void
 }) {
+  const isStudent = isStudentId(rec.student_id)
   const [image, setImage] = useState<string | null>(rec.profile_image_base64 || null)
   const [saving, setSaving] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
@@ -201,7 +212,7 @@ function EditProfile({
     const r = await updateProfile(rec.student_id, {
       ...data,
       imageBase64: imageChanged.current ? image : undefined,
-    })
+    }, passcode)
     setSaving(false)
     if (r.ok) onSaved(r.data)
     else setApiError(r.message)
@@ -224,14 +235,16 @@ function EditProfile({
           <F label="ชื่อ" e={errors.first_name?.message}><input className="field" {...field('first_name')} /></F>
           <F label="นามสกุล" e={errors.last_name?.message}><input className="field" {...field('last_name')} /></F>
           <F label="ชื่อเล่น" e={errors.nickname?.message}><input className="field" {...field('nickname')} /></F>
-          <F label="รหัสนักศึกษา" e={errors.student_id?.message}><input className="field bg-cream/60" readOnly {...field('student_id')} /></F>
-          <F label="ชั้นปี" e={errors.year_level?.message}>
+          {isStudent && (
+            <F label="รหัสนักศึกษา" e={errors.student_id?.message}><input className="field bg-cream/60" readOnly {...field('student_id')} /></F>
+          )}
+          <F label="ชั้นปี / สถานะ" e={errors.year_level?.message}>
             <select className="field" {...field('year_level')}>
               <option value="" disabled>เลือกชั้นปี</option>
-              {YEAR_LEVELS.map((y) => <option key={y} value={y}>ปี {y}</option>)}
+              {YEAR_LEVELS.map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
           </F>
-          <F label="สาขา" e={errors.major?.message}>
+          <F label="สาขาวิชา" e={errors.major?.message}>
             <input className="field bg-cream/60" readOnly {...field('major')} />
           </F>
           <F label="คณะ" e={errors.faculty?.message}><input className="field" {...field('faculty')} /></F>

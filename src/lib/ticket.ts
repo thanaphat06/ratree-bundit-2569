@@ -163,8 +163,9 @@ export async function renderTicket(canvas: HTMLCanvasElement, data: TicketData) 
   }
   ctx.fillStyle = 'rgba(31,26,23,0.45)'
   ctx.font = `400 24px ${THAI}`
+  ctx.textAlign = 'center'
+  ctx.fillText('ข้อมูลเพิ่มเติม', side + qrSize / 2, captionY)
   ctx.textAlign = 'left'
-  ctx.fillText('ข้อมูลเพิ่มเติม', side, captionY)
 
   // ---- ตาราง Name / Nickname / Student ID / Year Level ----
   const colX1 = side + qrSize + 60
@@ -189,9 +190,11 @@ export async function renderTicket(canvas: HTMLCanvasElement, data: TicketData) 
   }
 
   const fullName = `${data.first_name} ${data.last_name}`.trim()
+  // รหัสนักศึกษา: โชว์เฉพาะที่เป็นตัวเลข (คนลงด้วยชื่อ → '-')
+  const sidShown = /^[0-9][0-9-]{6,14}$/.test(data.student_id) ? data.student_id : '-'
   cell('Name.', fullName, colX1, r1Lbl, r1Val)
   cell('Nickname.', data.nickname, colX2, r1Lbl, r1Val)
-  cell('Student ID.', data.student_id, colX1, r2Lbl, r2Val)
+  cell('Student ID.', sidShown, colX1, r2Lbl, r2Val)
   cell('Year Level.', data.year_level ? `${data.year_level}` : '-', colX2, r2Lbl, r2Val)
 }
 
@@ -202,15 +205,30 @@ export function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   })
 }
 
-// ดาวน์โหลด PNG — มี fallback สำหรับ iOS Safari ที่ดาวน์โหลดตรง ๆ ไม่ได้
-export async function downloadTicket(canvas: HTMLCanvasElement, filename: string): Promise<'downloaded' | 'newtab'> {
+// บันทึกตั๋ว PNG — ไล่จากวิธีที่ดีสุดบนแต่ละอุปกรณ์
+// 'shared' = ใช้ share sheet (iOS/Android กด "บันทึกรูปภาพ" ได้), 'downloaded' = โหลดไฟล์ตรง, 'newtab' = เปิดแท็บใหม่
+export async function downloadTicket(canvas: HTMLCanvasElement, filename: string): Promise<'shared' | 'downloaded' | 'newtab'> {
   const blob = await canvasToBlob(canvas)
+  const file = new File([blob], filename, { type: 'image/png' })
+
+  // 1) Web Share API พร้อมไฟล์ — บนมือถือจะได้ share sheet ที่มี "บันทึกรูปภาพ"
+  const nav = navigator as Navigator & { canShare?: (d: unknown) => boolean }
+  if (nav.canShare && nav.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: filename })
+      return 'shared'
+    } catch (e) {
+      // ผู้ใช้กดยกเลิก share → ถือว่าเสร็จ ไม่ต้องเปิดแท็บใหม่
+      if ((e as Error)?.name === 'AbortError') return 'shared'
+      // อื่น ๆ → ตกไปใช้วิธีสำรอง
+    }
+  }
+
+  // 2) เดสก์ท็อป: ดาวน์โหลดไฟล์ตรง ๆ
   const url = URL.createObjectURL(blob)
   const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-
   if (isIOS) {
-    // iOS: เปิดรูปในแท็บใหม่ ให้ผู้ใช้กดค้างเพื่อบันทึก
     window.open(url, '_blank')
     setTimeout(() => URL.revokeObjectURL(url), 60000)
     return 'newtab'

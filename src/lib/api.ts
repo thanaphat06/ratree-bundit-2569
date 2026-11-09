@@ -19,21 +19,21 @@ async function call<T>(action: string, payload: Record<string, unknown> = {}): P
   }
 }
 
-// ข้อมูลผู้ลงทะเบียนจากรหัสนักศึกษา หรือ null ถ้ายังไม่ลงทะเบียน
-export function getMe(studentId: string) {
-  return call<Registration | null>('getMe', { student_id: studentId })
+// ข้อมูลผู้ลงทะเบียนจาก key (รหัส นศ./ชื่อ) + passcode (ถ้าลงด้วยชื่อ) หรือ null ถ้ายังไม่ลงทะเบียน
+export function getMe(id: string, passcode?: string) {
+  return call<Registration | null>('getMe', { student_id: id, passcode: passcode || '' })
 }
 
 export function register(form: ProfileInput) {
   return call<Registration>('register', { ...form })
 }
 
-export function updateProfile(studentId: string, fields: Partial<ProfileInput>) {
-  return call<Registration>('updateProfile', { student_id: studentId, ...fields })
+export function updateProfile(id: string, fields: Partial<ProfileInput>, passcode?: string) {
+  return call<Registration>('updateProfile', { student_id: id, passcode: passcode || '', ...fields })
 }
 
-export function deleteMe(studentId: string) {
-  return call<{ deleted: boolean }>('deleteMe', { student_id: studentId })
+export function deleteMe(id: string, passcode?: string) {
+  return call<{ deleted: boolean }>('deleteMe', { student_id: id, passcode: passcode || '' })
 }
 
 export interface CheckinResult {

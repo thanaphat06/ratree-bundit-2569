@@ -17,7 +17,7 @@ var PHOTO_FOLDER = 'profile_photos';
 var TICKET_PREFIX = 'BIO69';
 
 var HEADERS = [
-  'ticket_id', 'created_at', 'updated_at', 'student_id',
+  'ticket_id', 'created_at', 'updated_at', 'student_id', 'passcode',
   'first_name', 'last_name', 'nickname', 'year_level', 'major', 'faculty',
   'phone', 'line_id', 'instagram', 'food_type', 'food_allergy', 'bio',
   'profile_image_url', 'show_photo_on_ticket', 'status', 'checked_in_at',
@@ -54,25 +54,49 @@ function normId(id) {
 function validId(id) {
   return /^[0-9][0-9-]{6,14}$/.test(id);
 }
+function validPass(p) {
+  return /^\d{4}$/.test(String(p || ''));
+}
+// ตรวจ passcode ของ record (ถ้า record มี passcode = คนลงด้วยชื่อ ต้องตรงกัน)
+function checkPass(rec, passcode) {
+  var stored = String(rec.passcode || '');
+  if (!stored) return true; // คนลงด้วยรหัส นศ. ไม่มี passcode
+  return stored === String(passcode || '');
+}
 
 // ====== Handlers ======
 function handleGetMe(body) {
   var sid = normId(body.student_id);
-  if (!sid) return err('NO_ID', 'กรุณากรอกรหัสนักศึกษา');
+  if (!sid) return err('NO_ID', 'กรุณากรอกรหัสนักศึกษา หรือ ชื่อ');
   var row = findRowById(sid);
   if (!row) return ok(null);
-  return ok(rowToRecord(row.values, true));
+  var rec = rowToRecord(row.values, true);
+  if (!checkPass(rec, body.passcode)) return err('BAD_PASSCODE', 'รหัส passcode ไม่ถูกต้อง');
+  return ok(stripPass(rec));
 }
 
 function handleRegister(body) {
   var sid = normId(body.student_id);
-  if (!validId(sid)) return err('BAD_ID', 'รูปแบบรหัสนักศึกษาไม่ถูกต้อง');
+  if (!sid) return err('BAD_ID', 'กรุณากรอกรหัสนักศึกษา หรือ ชื่อ');
+  var isStudent = validId(sid);
+  var passcode = isStudent ? '' : String(body.passcode || '');
+  if (!isStudent && !validPass(passcode)) {
+    return err('BAD_PASSCODE', 'ผู้ลงด้วยชื่อ ต้องตั้งรหัส passcode 4 หลัก');
+  }
 
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    if (findRowById(sid)) {
-      return err('ALREADY_REGISTERED', 'รหัสนักศึกษานี้ลงทะเบียนไว้แล้ว');
+    var existing = findRowById(sid);
+    if (existing) {
+      // ชื่อซ้ำ: ถ้า passcode ตรง = คนเดิม, ไม่ตรง = ชื่อถูกใช้แล้ว
+      var exRec = rowToRecord(existing.values, false);
+      if (!isStudent && checkPass(exRec, passcode)) {
+        return err('ALREADY_REGISTERED', 'ชื่อนี้ลงทะเบียนไว้แล้ว (กลับไปหน้าดูตั๋ว)');
+      }
+      return err('ALREADY_REGISTERED', isStudent
+        ? 'รหัสนักศึกษานี้ลงทะเบียนไว้แล้ว'
+        : 'ชื่อนี้ถูกใช้แล้ว กรุณาเติมชื่อกลางหรือเปลี่ยนชื่อให้ไม่ซ้ำ');
     }
     var sheet = getSheet();
     var ticketId = nextTicketId(sheet);
@@ -86,6 +110,7 @@ function handleRegister(body) {
       created_at: now,
       updated_at: now,
       student_id: sid,
+      passcode: passcode,
       first_name: body.first_name,
       last_name: body.last_name,
       nickname: body.nickname,
@@ -104,7 +129,7 @@ function handleRegister(body) {
       checked_in_at: '',
     };
     sheet.appendRow(HEADERS.map(function (h) { return sanitize(rec[h]); }));
-    return ok(recordWithPhoto(rec, body.imageBase64));
+    return ok(stripPass(recordWithPhoto(rec, body.imageBase64)));
   } finally {
     lock.releaseLock();
   }
@@ -112,11 +137,12 @@ function handleRegister(body) {
 
 function handleUpdateProfile(body) {
   var sid = normId(body.student_id);
-  if (!sid) return err('NO_ID', 'กรุณาระบุรหัสนักศึกษา');
+  if (!sid) return err('NO_ID', 'กรุณาระบุรหัสนักศึกษา หรือ ชื่อ');
   var found = findRowById(sid);
   if (!found) return err('NOT_REGISTERED', 'ยังไม่ได้ลงทะเบียน');
 
   var rec = rowToRecord(found.values, false);
+  if (!checkPass(rec, body.passcode)) return err('BAD_PASSCODE', 'รหัส passcode ไม่ถูกต้อง');
   // แก้ได้เฉพาะฟิลด์เหล่านี้ (ticket_id / student_id / created ไม่เปลี่ยน)
   var editable = ['first_name', 'last_name', 'nickname', 'year_level', 'major', 'faculty',
     'phone', 'line_id', 'instagram', 'food_type', 'food_allergy', 'bio',
@@ -130,18 +156,19 @@ function handleUpdateProfile(body) {
   var sheet = getSheet();
   var rowData = HEADERS.map(function (h) { return sanitize(rec[h]); });
   sheet.getRange(found.rowIndex, 1, 1, HEADERS.length).setValues([rowData]);
-  return ok(recordWithPhoto(rec, body.imageBase64 || readPhotoBase64(rec.profile_image_url)));
+  return ok(stripPass(recordWithPhoto(rec, body.imageBase64 || readPhotoBase64(rec.profile_image_url))));
 }
 
 function handleDelete(body) {
   var sid = normId(body.student_id);
-  if (!sid) return err('NO_ID', 'กรุณาระบุรหัสนักศึกษา');
+  if (!sid) return err('NO_ID', 'กรุณาระบุรหัสนักศึกษา หรือ ชื่อ');
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     var found = findRowById(sid);
     if (!found) return err('NOT_REGISTERED', 'ไม่พบข้อมูลการลงทะเบียน');
     var rec = rowToRecord(found.values, false);
+    if (!checkPass(rec, body.passcode)) return err('BAD_PASSCODE', 'รหัส passcode ไม่ถูกต้อง');
     deletePhoto(rec.ticket_id);
     getSheet().deleteRow(found.rowIndex);
     return ok({ deleted: true });
@@ -247,6 +274,13 @@ function recordWithPhoto(rec, base64) {
   return out;
 }
 
+// ไม่ส่ง passcode กลับไปฝั่ง client
+function stripPass(rec) {
+  var out = {};
+  for (var k in rec) { if (k !== 'passcode') out[k] = rec[k]; }
+  return out;
+}
+
 // ====== Drive / รูป ======
 function getPhotoFolder() {
   var it = DriveApp.getFoldersByName(PHOTO_FOLDER);
@@ -308,15 +342,14 @@ function json(obj) {
 function ok(data) { return { ok: true, data: data }; }
 function err(code, msg) { return { ok: false, error: code, message: msg }; }
 
-// ====== setup() — รันครั้งเดียว ======
+// ====== setup() — รันเพื่อสร้าง/อัปเดตหัวคอลัมน์ ======
+// เขียนหัวคอลัมน์ทับทุกครั้ง (กันกรณีแก้โค้ดแล้วคอลัมน์ไม่ตรง)
 function setup() {
   var ss = getSS();
   var sheet = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
-  if (sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
-    sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
-  }
+  sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
 
   var foodCol = colLetter(HEADERS.indexOf('food_type') + 1);
   var statusCol = colLetter(HEADERS.indexOf('status') + 1);

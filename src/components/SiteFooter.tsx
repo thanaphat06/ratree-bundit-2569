@@ -7,11 +7,11 @@ export default function SiteFooter() {
       <p className="mb-2 font-medium text-ink/80">{EVENT.organizer}</p>
       <div className="flex items-center justify-center gap-4">
         <a href={EVENT.facebook.url} target="_blank" rel="noreferrer" className="hover:text-orange">
-          FB: {EVENT.facebook.label}
+          Facebook: {EVENT.facebook.label}
         </a>
         <span className="text-stone/40">·</span>
         <a href={EVENT.instagram.url} target="_blank" rel="noreferrer" className="hover:text-orange">
-          IG: {EVENT.instagram.label}
+          Instagram: {EVENT.instagram.label}
         </a>
       </div>
       <Link to="/admin" className="mt-4 inline-block text-xs text-ink/40 hover:text-orange hover:underline">
