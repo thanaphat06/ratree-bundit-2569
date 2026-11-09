@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  margin: 0;
+  background: #fbf6ec;
+  color: #1f1a17;
+  font-family: 'Prompt', 'Kanit', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* กระดาษสมุด: เส้นตารางบาง ๆ ใช้เป็นพื้นหลังทั่วเว็บ */
+.paper-grid {
+  background-image:
+    linear-gradient(rgba(138, 110, 82, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(138, 110, 82, 0.08) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .float-plane {
+    animation: floatPlane 7s ease-in-out infinite;
+  }
+  .float-plane-slow {
+    animation: floatPlane 11s ease-in-out infinite;
+  }
+}
+
+@keyframes floatPlane {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-14px) rotate(3deg); }
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-2xl bg-orange px-6 py-3 font-semibold text-white shadow-warm transition active:scale-95 disabled:opacity-50;
+}
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-2xl border border-stone/30 bg-white/70 px-5 py-3 font-medium text-ink transition active:scale-95;
+}
+.field {
+  @apply w-full rounded-xl border border-stone/25 bg-white px-4 py-3 text-ink outline-none transition focus:border-orange focus:ring-2 focus:ring-orange/25;
+}
+.label {
+  @apply mb-1.5 block text-sm font-medium text-ink/80;
+}
+.err {
+  @apply mt-1 text-sm text-orangeDeep;
+}
