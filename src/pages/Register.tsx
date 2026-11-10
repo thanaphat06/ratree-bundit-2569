@@ -9,7 +9,7 @@ import { setSession } from '../lib/session'
 import TicketCanvas from '../components/TicketCanvas'
 import type { TicketData } from '../lib/ticket'
 
-const STEPS = ['ข้อมูลส่วนตัว', 'ติดต่อ & อาหาร', 'ข้อความ & ยืนยัน']
+const STEPS = ['ข้อมูลส่วนตัว', 'ติดต่อ & อาหาร']
 
 export default function Register() {
   const nav = useNavigate()
@@ -79,16 +79,21 @@ function RegisterWizard({ onDone }: { onDone: () => void }) {
 
   const fieldsByStep: (keyof RegisterForm)[][] = [
     ['first_name', 'last_name', 'nickname', 'student_id', 'year_level', 'major', 'faculty'],
-    ['phone', 'line_id', 'instagram', 'food_type', 'food_allergy'],
-    ['bio'],
+    ['phone', 'line_id', 'instagram', 'food_type', 'food_allergy', 'bio'],
   ]
 
   const next = async () => {
     const okForm = await trigger(fieldsByStep[step])
-    // ขั้น 1: ถ้าไม่มีรหัส นศ. ต้องตั้ง passcode 4 หลัก
-    if (step === 0 && !hasSid && !/^\d{4}$/.test(passcode)) {
-      setExtraErr('ไม่มีรหัสนักศึกษา ต้องตั้งรหัส 4 หลักไว้กลับมาดูตั๋ว')
-      return
+    // ขั้นแรก: ถ้าไม่มีรหัส นศ. ต้องตั้ง passcode + ต้องยอมรับ PDPA ก่อนไปต่อ
+    if (step === 0) {
+      if (!hasSid && !/^\d{4}$/.test(passcode)) {
+        setExtraErr('ไม่มีรหัสนักศึกษา ต้องตั้งรหัส 4 หลักไว้กลับมาดูตั๋ว')
+        return
+      }
+      if (!consent) {
+        setExtraErr('กรุณายอมรับเงื่อนไข PDPA ก่อนไปต่อ')
+        return
+      }
     }
     setExtraErr(null)
     if (okForm) setStep((s) => Math.min(s + 1, STEPS.length - 1))
@@ -186,6 +191,14 @@ function RegisterWizard({ onDone }: { onDone: () => void }) {
                     <p className="mt-1 text-xs text-orangeDeep">จดรหัสนี้ไว้ให้ดี ต้องใช้กลับมาดูตั๋วภายหลัง</p>
                   </div>
                 )}
+
+                {/* PDPA — อยู่หน้าแรกของฟอร์ม ต้องยอมรับก่อนไปต่อ */}
+                <label className="sm:col-span-2 flex items-start gap-3 rounded-xl bg-cream px-4 py-3">
+                  <input type="checkbox" className="mt-1 h-5 w-5 accent-orange" checked={consent} onChange={(e) => { setConsent(e.target.checked); setExtraErr(null) }} />
+                  <span className="text-sm text-ink/70">
+                    ยินยอมให้เก็บและใช้ข้อมูลเพื่อการจัดงาน{EVENT.name} เท่านั้น ข้อมูลจะไม่ถูกเผยแพร่ต่อบุคคลภายนอก (PDPA)
+                  </span>
+                </label>
               </div>
             )}
 
@@ -210,29 +223,16 @@ function RegisterWizard({ onDone }: { onDone: () => void }) {
                     <input className="field" placeholder="เช่น กุ้ง, ถั่ว" {...field('food_allergy')} />
                   </Field>
                 </div>
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="space-y-5">
-                <Field label="ข้อความสั้น ๆ ถึงเพื่อน (ไม่บังคับ, ≤ 120)" error={errors.bio?.message}>
-                  <textarea className="field" rows={2} maxLength={120} {...field('bio')} />
-                </Field>
+                <div className="sm:col-span-2">
+                  <Field label="ข้อความสั้น ๆ ถึงเพื่อน (ไม่บังคับ, ≤ 120)" error={errors.bio?.message}>
+                    <textarea className="field" rows={2} maxLength={120} {...field('bio')} />
+                  </Field>
+                </div>
               </div>
             )}
 
             {(extraErr || apiError) && (
               <p className="mt-4 rounded-xl bg-orange/10 px-4 py-3 text-sm text-orangeDeep">{extraErr || apiError}</p>
-            )}
-
-            {/* PDPA — อยู่ข้างล่างใกล้ปุ่มบันทึก (เฉพาะขั้นสุดท้าย) */}
-            {step === STEPS.length - 1 && (
-              <label className="mt-5 flex items-start gap-3 rounded-xl bg-cream px-4 py-3">
-                <input type="checkbox" className="mt-1 h-5 w-5 accent-orange" checked={consent} onChange={(e) => { setConsent(e.target.checked); setExtraErr(null) }} />
-                <span className="text-sm text-ink/70">
-                  ยินยอมให้เก็บและใช้ข้อมูลเพื่อการจัดงาน{EVENT.name} เท่านั้น ข้อมูลจะไม่ถูกเผยแพร่ต่อบุคคลภายนอก (PDPA)
-                </span>
-              </label>
             )}
 
             <div className="mt-6 flex items-center justify-between gap-3">
