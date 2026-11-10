@@ -7,7 +7,6 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '../lib/zodResolver'
 import { registerSchema, type RegisterForm } from '../lib/schema'
 import TicketCanvas, { type TicketCanvasHandle } from '../components/TicketCanvas'
-import PhotoUploader from '../components/PhotoUploader'
 import IdentityGate from '../components/IdentityGate'
 import SiteFooter from '../components/SiteFooter'
 import { downloadTicket, ticketFilename, type TicketData } from '../lib/ticket'
@@ -197,10 +196,8 @@ function EditProfile({
   onSaved: (r: Registration) => void
 }) {
   const isStudent = isStudentId(rec.student_id)
-  const [image, setImage] = useState<string | null>(rec.profile_image_base64 || null)
   const [saving, setSaving] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
-  const imageChanged = useRef(false)
 
   const {
     register: field,
@@ -230,10 +227,7 @@ function EditProfile({
   const onSubmit = async (data: RegisterForm) => {
     setApiError(null)
     setSaving(true)
-    const r = await updateProfile(rec.student_id, {
-      ...data,
-      imageBase64: imageChanged.current ? image : undefined,
-    }, passcode)
+    const r = await updateProfile(rec.student_id, { ...data }, passcode)
     setSaving(false)
     if (r.ok) onSaved(r.data)
     else setApiError(r.message)
@@ -244,15 +238,7 @@ function EditProfile({
       <form onSubmit={handleSubmit(onSubmit)} className="mx-auto max-w-xl rounded-2xl bg-white/85 p-6 shadow-warm sm:p-8">
         <h1 className="mb-5 font-display text-2xl font-bold text-ink">แก้ไขโปรไฟล์</h1>
 
-        <PhotoUploader
-          value={image}
-          onChange={(v) => {
-            imageChanged.current = true
-            setImage(v)
-          }}
-        />
-
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <F label="ชื่อ" e={errors.first_name?.message}><input className="field" {...field('first_name')} /></F>
           <F label="นามสกุล" e={errors.last_name?.message}><input className="field" {...field('last_name')} /></F>
           <F label="ชื่อเล่น" e={errors.nickname?.message}><input className="field" {...field('nickname')} /></F>

@@ -6,11 +6,10 @@ import { registerSchema, type RegisterForm } from '../lib/schema'
 import { DEFAULT_FACULTY, DEFAULT_MAJOR, EVENT, FOOD_TYPES, YEAR_LEVELS, isRegistrationClosed } from '../config/event'
 import { register } from '../lib/api'
 import { setSession } from '../lib/session'
-import PhotoUploader from '../components/PhotoUploader'
 import TicketCanvas from '../components/TicketCanvas'
 import type { TicketData } from '../lib/ticket'
 
-const STEPS = ['ข้อมูลส่วนตัว', 'ติดต่อ & อาหาร', 'โปรไฟล์ & ตั๋ว']
+const STEPS = ['ข้อมูลส่วนตัว', 'ติดต่อ & อาหาร', 'ข้อความ & ยืนยัน']
 
 export default function Register() {
   const nav = useNavigate()
@@ -31,7 +30,6 @@ export default function Register() {
 
 function RegisterWizard({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0)
-  const [image, setImage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [passcode, setPasscode] = useState('')
@@ -112,7 +110,7 @@ function RegisterWizard({ onDone }: { onDone: () => void }) {
       return
     }
     setSubmitting(true)
-    const r = await register({ ...data, student_id: key, passcode: pass, imageBase64: image })
+    const r = await register({ ...data, student_id: key, passcode: pass })
     setSubmitting(false)
     if (r.ok) {
       setSession({ id: key, passcode: pass })
@@ -217,23 +215,24 @@ function RegisterWizard({ onDone }: { onDone: () => void }) {
 
             {step === 2 && (
               <div className="space-y-5">
-                <PhotoUploader value={image} onChange={setImage} />
-                <p className="text-center text-xs text-ink/50">รูปโปรไฟล์ใช้ในระบบของทีมงาน ไม่แสดงบนตั๋ว</p>
                 <Field label="ข้อความสั้น ๆ ถึงเพื่อน (ไม่บังคับ, ≤ 120)" error={errors.bio?.message}>
                   <textarea className="field" rows={2} maxLength={120} {...field('bio')} />
                 </Field>
-
-                <label className="flex items-start gap-3 rounded-xl bg-cream px-4 py-3">
-                  <input type="checkbox" className="mt-1 h-5 w-5 accent-orange" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-                  <span className="text-sm text-ink/70">
-                    ยินยอมให้เก็บและใช้ข้อมูลเพื่อการจัดงาน{EVENT.name} เท่านั้น ข้อมูลจะไม่ถูกเผยแพร่ต่อบุคคลภายนอก (PDPA)
-                  </span>
-                </label>
               </div>
             )}
 
             {(extraErr || apiError) && (
               <p className="mt-4 rounded-xl bg-orange/10 px-4 py-3 text-sm text-orangeDeep">{extraErr || apiError}</p>
+            )}
+
+            {/* PDPA — อยู่ข้างล่างใกล้ปุ่มบันทึก (เฉพาะขั้นสุดท้าย) */}
+            {step === STEPS.length - 1 && (
+              <label className="mt-5 flex items-start gap-3 rounded-xl bg-cream px-4 py-3">
+                <input type="checkbox" className="mt-1 h-5 w-5 accent-orange" checked={consent} onChange={(e) => { setConsent(e.target.checked); setExtraErr(null) }} />
+                <span className="text-sm text-ink/70">
+                  ยินยอมให้เก็บและใช้ข้อมูลเพื่อการจัดงาน{EVENT.name} เท่านั้น ข้อมูลจะไม่ถูกเผยแพร่ต่อบุคคลภายนอก (PDPA)
+                </span>
+              </label>
             )}
 
             <div className="mt-6 flex items-center justify-between gap-3">
