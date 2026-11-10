@@ -4,22 +4,16 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '../lib/zodResolver'
 import { registerSchema, type RegisterForm } from '../lib/schema'
 import { DEFAULT_FACULTY, DEFAULT_MAJOR, EVENT, FOOD_TYPES, YEAR_LEVELS, isRegistrationClosed } from '../config/event'
-import { getMe, register } from '../lib/api'
-import { setSession, isStudentId } from '../lib/session'
+import { register } from '../lib/api'
+import { setSession } from '../lib/session'
 import PhotoUploader from '../components/PhotoUploader'
 import TicketCanvas from '../components/TicketCanvas'
-import IdentityGate from '../components/IdentityGate'
 import type { TicketData } from '../lib/ticket'
 
 const STEPS = ['ข้อมูลส่วนตัว', 'ติดต่อ & อาหาร', 'โปรไฟล์ & ตั๋ว']
 
-interface Identity { id: string; passcode?: string; isStudent: boolean }
-
 export default function Register() {
   const nav = useNavigate()
-  const [identity, setIdentity] = useState<Identity | null>(null)
-  const [gateLoading, setGateLoading] = useState(false)
-  const [gateError, setGateError] = useState<string | null>(null)
 
   if (isRegistrationClosed()) {
     return (
@@ -32,51 +26,17 @@ export default function Register() {
     )
   }
 
-  // ยังไม่ระบุตัวตน → ด่านรหัสนักศึกษา/ชื่อ + ขอความยินยอม
-  if (!identity) {
-    const onGate = async (id: string, passcode?: string) => {
-      setGateError(null)
-      setGateLoading(true)
-      const r = await getMe(id, passcode)
-      setGateLoading(false)
-      if (!r.ok) {
-        setGateError(r.message)
-        return
-      }
-      if (r.data) {
-        // ลงทะเบียนไว้แล้ว → ไปดูตั๋ว
-        setSession({ id, passcode })
-        nav('/ticket')
-        return
-      }
-      setSession({ id, passcode })
-      setIdentity({ id, passcode, isStudent: isStudentId(id) })
-    }
-    return (
-      <Shell>
-        <IdentityGate
-          title="ลงทะเบียนรับตั๋ว"
-          subtitle="กรอกรหัสนักศึกษา (หรือชื่อ-นามสกุลสำหรับอาจารย์/ศิษย์เก่า) เพื่อเริ่มลงทะเบียน"
-          submitLabel="ถัดไป"
-          requireConsent
-          passcodeMode="set"
-          loading={gateLoading}
-          error={gateError}
-          onSubmit={onGate}
-        />
-      </Shell>
-    )
-  }
-
-  return <RegisterWizard identity={identity} onDone={() => nav('/ticket')} />
+  return <RegisterWizard onDone={() => nav('/ticket')} />
 }
 
-function RegisterWizard({ identity, onDone }: { identity: Identity; onDone: () => void }) {
-  const studentId = identity.id
+function RegisterWizard({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0)
   const [image, setImage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
+  const [passcode, setPasscode] = useState('')
+  const [consent, setConsent] = useState(false)
+  const [extraErr, setExtraErr] = useState<string | null>(null)
 
   const {
     register: field,
@@ -91,7 +51,7 @@ function RegisterWizard({ identity, onDone }: { identity: Identity; onDone: () =
       first_name: '',
       last_name: '',
       nickname: '',
-      student_id: studentId,
+      student_id: '',
       year_level: '',
       major: DEFAULT_MAJOR,
       faculty: DEFAULT_FACULTY,
@@ -106,16 +66,17 @@ function RegisterWizard({ identity, onDone }: { identity: Identity; onDone: () =
   })
 
   const v = watch()
+  const hasSid = !!(v.student_id || '').trim() // มีรหัสนักศึกษาไหม → ถ้าไม่มีต้องตั้ง passcode
   const preview: TicketData = useMemo(
     () => ({
       ticket_id: `${EVENT.ticketPrefix}-XXXX`,
       nickname: v.nickname || 'ชื่อเล่น',
       first_name: v.first_name || 'ชื่อ',
       last_name: v.last_name || 'นามสกุล',
-      student_id: v.student_id || studentId,
+      student_id: v.student_id || '-',
       year_level: v.year_level || '-',
     }),
-    [v.nickname, v.first_name, v.last_name, v.student_id, v.year_level, studentId],
+    [v.nickname, v.first_name, v.last_name, v.student_id, v.year_level],
   )
 
   const fieldsByStep: (keyof RegisterForm)[][] = [
@@ -125,16 +86,40 @@ function RegisterWizard({ identity, onDone }: { identity: Identity; onDone: () =
   ]
 
   const next = async () => {
-    if (await trigger(fieldsByStep[step])) setStep((s) => Math.min(s + 1, STEPS.length - 1))
+    const okForm = await trigger(fieldsByStep[step])
+    // ขั้น 1: ถ้าไม่มีรหัส นศ. ต้องตั้ง passcode 4 หลัก
+    if (step === 0 && !hasSid && !/^\d{4}$/.test(passcode)) {
+      setExtraErr('ไม่มีรหัสนักศึกษา ต้องตั้งรหัส 4 หลักไว้กลับมาดูตั๋ว')
+      return
+    }
+    setExtraErr(null)
+    if (okForm) setStep((s) => Math.min(s + 1, STEPS.length - 1))
   }
 
   const onSubmit = async (data: RegisterForm) => {
     setApiError(null)
+    setExtraErr(null)
+    const sid = (data.student_id || '').trim()
+    const key = sid || `${data.first_name} ${data.last_name}`.trim()
+    const pass = sid ? '' : passcode
+    if (!sid && !/^\d{4}$/.test(pass)) {
+      setStep(0)
+      setExtraErr('ไม่มีรหัสนักศึกษา ต้องตั้งรหัส 4 หลักไว้กลับมาดูตั๋ว')
+      return
+    }
+    if (!consent) {
+      setExtraErr('กรุณายอมรับเงื่อนไข PDPA ก่อนยืนยัน')
+      return
+    }
     setSubmitting(true)
-    const r = await register({ ...data, student_id: studentId, passcode: identity.passcode, imageBase64: image })
+    const r = await register({ ...data, student_id: key, passcode: pass, imageBase64: image })
     setSubmitting(false)
-    if (r.ok) onDone()
-    else setApiError(r.message || 'เกิดข้อผิดพลาด ลองใหม่อีกครั้ง')
+    if (r.ok) {
+      setSession({ id: key, passcode: pass })
+      onDone()
+    } else {
+      setApiError(r.message || 'เกิดข้อผิดพลาด ลองใหม่อีกครั้ง')
+    }
   }
 
   return (
@@ -171,11 +156,9 @@ function RegisterWizard({ identity, onDone }: { identity: Identity; onDone: () =
                 <Field label="ชื่อเล่น (แสดงตัวใหญ่บนตั๋ว)" error={errors.nickname?.message}>
                   <input className="field" {...field('nickname')} />
                 </Field>
-                {identity.isStudent && (
-                  <Field label="รหัสนักศึกษา" error={errors.student_id?.message}>
-                    <input className="field bg-cream/60" readOnly {...field('student_id')} />
-                  </Field>
-                )}
+                <Field label="รหัสนักศึกษา (อาจารย์/ศิษย์เก่าเว้นว่างได้)" error={errors.student_id?.message}>
+                  <input className="field" inputMode="text" placeholder="เช่น 643020123-4" {...field('student_id')} />
+                </Field>
                 <Field label="ชั้นปี / สถานะ" error={errors.year_level?.message}>
                   <select className="field" {...field('year_level')} defaultValue="">
                     <option value="" disabled>เลือกชั้นปี</option>
@@ -188,6 +171,23 @@ function RegisterWizard({ identity, onDone }: { identity: Identity; onDone: () =
                 <Field label="คณะ" error={errors.faculty?.message}>
                   <input className="field" {...field('faculty')} />
                 </Field>
+
+                {/* ไม่มีรหัสนักศึกษา → ตั้งรหัส 4 หลักไว้กลับมาดูตั๋ว */}
+                {!hasSid && (
+                  <div className="sm:col-span-2">
+                    <Field label="ตั้งรหัส 4 หลัก (สำหรับผู้ไม่มีรหัสนักศึกษา ไว้กลับมาดู/แก้ตั๋ว)">
+                      <input
+                        className="field text-center text-xl tracking-[0.5em]"
+                        inputMode="numeric"
+                        maxLength={4}
+                        placeholder="● ● ● ●"
+                        value={passcode}
+                        onChange={(e) => setPasscode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      />
+                    </Field>
+                    <p className="mt-1 text-xs text-orangeDeep">จดรหัสนี้ไว้ให้ดี ต้องใช้กลับมาดูตั๋วภายหลัง</p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -222,10 +222,19 @@ function RegisterWizard({ identity, onDone }: { identity: Identity; onDone: () =
                 <Field label="ข้อความสั้น ๆ ถึงเพื่อน (ไม่บังคับ, ≤ 120)" error={errors.bio?.message}>
                   <textarea className="field" rows={2} maxLength={120} {...field('bio')} />
                 </Field>
+
+                <label className="flex items-start gap-3 rounded-xl bg-cream px-4 py-3">
+                  <input type="checkbox" className="mt-1 h-5 w-5 accent-orange" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+                  <span className="text-sm text-ink/70">
+                    ยินยอมให้เก็บและใช้ข้อมูลเพื่อการจัดงาน{EVENT.name} เท่านั้น ข้อมูลจะไม่ถูกเผยแพร่ต่อบุคคลภายนอก (PDPA)
+                  </span>
+                </label>
               </div>
             )}
 
-            {apiError && <p className="mt-4 rounded-xl bg-orange/10 px-4 py-3 text-sm text-orangeDeep">{apiError}</p>}
+            {(extraErr || apiError) && (
+              <p className="mt-4 rounded-xl bg-orange/10 px-4 py-3 text-sm text-orangeDeep">{extraErr || apiError}</p>
+            )}
 
             <div className="mt-6 flex items-center justify-between gap-3">
               <button

@@ -40,7 +40,7 @@ export default function Landing() {
         {/* CTA ใต้รูป */}
         <div className="relative -mt-4 flex flex-col items-center px-6 pb-12 text-center">
           <p className="max-w-lg text-lg text-ink/75">
-            ร่วมสร้างค่ำคืนแห่งความทรงจำ แสดงความยินดีกับบัณฑิตใต้ป้ายแดง แห่งสาขาวิชาชีววิทยา คณะวิทยาศาสตร์ มหาวิทยาลัยขอนแก่น
+            ร่วมสร้างค่ำคืนแห่งความทรงจำ แสดงความยินดีกับบัณฑิตใหม่ป้ายแดง แห่งสาขาวิชาชีววิทยา คณะวิทยาศาสตร์ มหาวิทยาลัยขอนแก่น
           </p>
           <button onClick={() => nav('/register')} className="btn-primary mt-6 px-8 py-4 text-lg">
             ลงทะเบียนรับตั๋ว
@@ -78,6 +78,10 @@ export default function Landing() {
         <div className="mt-8 space-y-4">
           <DetailCard title="Theme · BACK TO SCHOOL" body={EVENT.themeDesc} />
           <DetailCard title="การแต่งกาย (Dress code)" body={EVENT.dressCodeFull} />
+          <div className="rounded-2xl bg-white/70 p-6 shadow-sm">
+            <p className="leading-relaxed text-ink/80"><span className="font-semibold text-orange">Date :</span> {EVENT.dateText}</p>
+            <p className="mt-1 leading-relaxed text-ink/80"><span className="font-semibold text-orange">Time :</span> เริ่มลงทะเบียน 17.30 - 19.00 น. · งานเริ่มเวลา 19.00 - 22.00 น.</p>
+          </div>
           <div className="rounded-2xl bg-white/70 p-6 shadow-sm">
             <p className="mb-3 font-display text-lg font-bold text-orange">กำหนดการ</p>
             <ul className="space-y-2 text-ink/80">
